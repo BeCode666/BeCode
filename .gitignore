@@ -1,0 +1,6 @@
+sessions/  
+test_py_output.txt  
+__pycache__/ 
+.claude/
+.hybrid/
+.env

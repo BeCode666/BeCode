@@ -1,0 +1,203 @@
+"""Orchestrator — the main workflow loop.
+
+Flow:
+  1. Receive user requirement.
+  2. Loop (max_iterations):
+     a. Coder Agent → implementation + report
+     b. Reviewer Agent → verdict (PASS/FAIL)
+     c. If PASS → exit
+     d. If FAIL → extract feedback → back to (a)
+  3. Return final outcome.
+"""
+
+import logging
+import re
+from typing import Optional
+
+from src.agents.coder_agent import run_coder
+from src.agents.reviewer_agent import run_reviewer
+from src.core.config import settings
+from src.core.session_store import SessionStore
+from src.ui.console import get_console
+from src.ui.callbacks import ToolCallCapture
+
+logger = logging.getLogger(__name__)
+
+
+class Orchestrator:
+    """Manages the Coder → Reviewer → feedback loop."""
+
+    def __init__(self, session: Optional[SessionStore] = None, model_name: Optional[str] = None):
+        self.session = session or SessionStore()
+        self.model_name = model_name
+        self.max_iterations = settings.max_iterations
+
+    # ── public API ──────────────────────────────────────────────────
+
+    def run(self, requirement: str) -> dict:
+        """Execute the full agent workflow.
+
+        Args:
+            requirement: The user's request.
+
+        Returns:
+            dict with keys:
+              - success: bool
+              - summary: str
+              - total_turns: int
+              - session_id: str
+              - coder_reports: list[str]
+              - review_verdicts: list[str]
+        """
+        self.session.requirement = requirement
+        self.session.status = "running"
+        self.session.save()
+        logger.info(
+            "Orchestrator start | session=%s | max_iterations=%d",
+            self.session.session_id,
+            self.max_iterations,
+        )
+
+        console = get_console()
+
+        coder_reports: list[str] = []
+        review_verdicts: list[str] = []
+        feedback = ""
+
+        for iteration in range(1, self.max_iterations + 1):
+            logger.info("=== Iteration %d / %d ===", iteration, self.max_iterations)
+            console.start_iteration(iteration, self.max_iterations)
+
+            # ── Step A: Coder ────────────────────────────────────────
+            console.agent_thinking("coder", "正在分析需求并实现...")
+            coder_callback = ToolCallCapture(agent_name="coder")
+
+            try:
+                coder_report = run_coder(
+                    requirement=requirement,
+                    feedback=feedback,
+                    model_name=self.model_name,
+                    callbacks=[coder_callback],
+                )
+            except Exception as exc:
+                logger.exception("Coder agent crashed")
+                coder_report = f"[Coder 异常] {exc}"
+                console.error(f"Coder Agent 异常: {exc}")
+
+            self.session.add_entry("coder", coder_report)
+            self.session.save()
+            coder_reports.append(coder_report)
+
+            # Show coder's report summary
+            console.agent_report("coder", coder_report)
+
+            # ── Step B: Reviewer ─────────────────────────────────────
+            console.agent_thinking("reviewer", "正在审查实现代码...")
+            reviewer_callback = ToolCallCapture(agent_name="reviewer")
+
+            try:
+                review_verdict = run_reviewer(
+                    requirement=requirement,
+                    coder_report=coder_report,
+                    model_name=self.model_name,
+                    callbacks=[reviewer_callback],
+                )
+            except Exception as exc:
+                logger.exception("Reviewer agent crashed")
+                review_verdict = f"[Reviewer 异常] {exc}"
+                console.error(f"Reviewer Agent 异常: {exc}")
+
+            self.session.add_entry("reviewer", review_verdict)
+            self.session.save()
+            review_verdicts.append(review_verdict)
+
+            # Show reviewer's verdict
+            console.agent_report("reviewer", review_verdict)
+
+            # ── Step C: Check verdict ────────────────────────────────
+            is_pass = self._is_pass(review_verdict)
+
+            if is_pass:
+                logger.info("Reviewer PASS — workflow complete")
+                console.review_verdict(is_pass=True)
+                self.session.status = "completed"
+                self.session.save()
+                return self._result(
+                    success=True,
+                    summary="审查通过，需求已实现。",
+                    total_turns=iteration,
+                    coder_reports=coder_reports,
+                    review_verdicts=review_verdicts,
+                )
+
+            # ── Step D: Extract feedback ─────────────────────────────
+            feedback = self._extract_feedback(review_verdict)
+            logger.info("Reviewer FAIL — extracting feedback for next round")
+            console.review_verdict(is_pass=False, feedback=feedback)
+
+        # ── Out of iterations ────────────────────────────────────────
+        logger.warning("Max iterations (%d) reached without pass", self.max_iterations)
+        self.session.status = "max_iterations_reached"
+        self.session.save()
+        return self._result(
+            success=False,
+            summary=f"已达最大迭代次数 ({self.max_iterations})，需求未完全实现。",
+            total_turns=self.max_iterations,
+            coder_reports=coder_reports,
+            review_verdicts=review_verdicts,
+        )
+
+    # ── internals ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_pass(verdict: str) -> bool:
+        """Heuristic: look for PASS signal in the review verdict."""
+        # Look for "状态: PASS" or "PASS" near the top in a markdown heading
+        text = verdict.lower()
+        # Check for the structured format first
+        if re.search(r"状态:\s*PASS", verdict, re.I):
+            return True
+        # Also check for "PASS" as a standalone word in the conclusion section
+        if re.search(r"## 审查结论.*?状态:?\s*PASS", verdict, re.I | re.DOTALL):
+            return True
+        # Fallback: simple keyword check (avoid false positives from "not pass")
+        if re.search(r"\bPASS\b", text) and not re.search(r"not\s+pass|no[nt]\s+pass", text):
+            # Make sure FAIL isn't also present
+            if not re.search(r"\bFAIL\b", text):
+                return True
+        return False
+
+    @staticmethod
+    def _extract_feedback(verdict: str) -> str:
+        """Extract the actionable feedback section from a FAIL verdict."""
+        # Look for "下一轮反馈" or "详细意见" section
+        for section in ["下一轮反馈", "详细意见", "### 下一轮反馈", "### 详细意见"]:
+            idx = verdict.find(section)
+            if idx != -1:
+                # Return everything after the section header
+                content = verdict[idx + len(section):].strip()
+                # Limit to reasonable length
+                return content[:2000]
+
+        # Fallback: return the entire verdict (trimmed)
+        lines = verdict.strip().splitlines()
+        # Remove the verdict header
+        filtered = [l for l in lines if "PASS" not in l and "FAIL" not in l]
+        return "\n".join(filtered).strip()[:2000]
+
+    def _result(
+        self,
+        success: bool,
+        summary: str,
+        total_turns: int,
+        coder_reports: list[str],
+        review_verdicts: list[str],
+    ) -> dict:
+        return {
+            "success": success,
+            "summary": summary,
+            "total_turns": total_turns,
+            "session_id": self.session.session_id,
+            "coder_reports": coder_reports,
+            "review_verdicts": review_verdicts,
+        }
