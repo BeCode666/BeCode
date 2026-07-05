@@ -3,6 +3,10 @@
 Each session is a JSON file under the configured session directory.
 The store keeps the full turn history so the process can be resumed
 after an interruption.
+
+Each history entry may include ``metadata.tool_calls`` — a list of
+tool invocations (name + arguments, without responses) made during
+that agent round.
 """
 
 import json

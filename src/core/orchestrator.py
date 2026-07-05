@@ -84,7 +84,13 @@ class Orchestrator:
                 coder_report = f"[Coder 异常] {exc}"
                 console.error(f"Coder Agent 异常: {exc}")
 
-            self.session.add_entry("coder", coder_report)
+            # Capture tool calls from this round and pass as metadata
+            coder_tool_calls = coder_callback.get_tool_calls()
+            self.session.add_entry(
+                "coder",
+                coder_report,
+                metadata={"tool_calls": coder_tool_calls} if coder_tool_calls else None,
+            )
             self.session.save()
             coder_reports.append(coder_report)
 
@@ -107,7 +113,13 @@ class Orchestrator:
                 review_verdict = f"[Reviewer 异常] {exc}"
                 console.error(f"Reviewer Agent 异常: {exc}")
 
-            self.session.add_entry("reviewer", review_verdict)
+            # Capture tool calls from this round and pass as metadata
+            reviewer_tool_calls = reviewer_callback.get_tool_calls()
+            self.session.add_entry(
+                "reviewer",
+                review_verdict,
+                metadata={"tool_calls": reviewer_tool_calls} if reviewer_tool_calls else None,
+            )
             self.session.save()
             review_verdicts.append(review_verdict)
 

@@ -33,4 +33,5 @@
 - **移除 `enter_interactive_mode()`**: `console.py` 移除了 `enter_interactive_mode()` 方法及相关交互模式入口。
 - `console.py` 移除了 `tool_call_start` 和 `tool_call_end` 方法，新增 `tool_call` 方法实现 3 行精简展示。`collapsible.py` 简化为纯 section 管理器，不再依赖 `keyboard`、`threading`、`rich.live.Live`。
 - **`edit_file` 自动创建文件优化**: `src/tools/tools.py` 的 `edit_file` 工具在文件不存在时，不再直接报错，而是检查父目录是否存在；如果父目录存在，则自动创建空文件后再执行替换逻辑（`old_string=""` 时匹配空文件内容，替换后写入 `new_string`）；如果父目录也不存在，则返回"文件路径不存在"错误。
+- **Session 记录工具调用**: `ToolCallCapture`（`callbacks.py`）新增 `_tool_calls` 累加器和 `get_tool_calls()` 方法，在 `on_tool_start` 中记录工具名和参数（不含响应）。`Orchestrator.run()` 在每次 Coder/Reviewer 运行后，将工具调用列表通过 `metadata={"tool_calls": [...]}` 传入 `session.add_entry()`，最终持久化到 session JSON 的 `history[].metadata.tool_calls` 字段。
 

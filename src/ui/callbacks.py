@@ -44,6 +44,9 @@ class ToolCallCapture(BaseCallbackHandler):
     - Agent chain-of-thought (when available)
     - Tool calls with arguments
     - Tool results
+
+    Also records tool invocations (name + args, without responses) for
+    session persistence via :meth:`get_tool_calls`.
     """
 
     def __init__(self, agent_name: str = "coder"):
@@ -51,6 +54,21 @@ class ToolCallCapture(BaseCallbackHandler):
         self._console = get_console()
         self._current_tool: Optional[str] = None
         self._current_tool_args: Optional[dict] = None
+        # Accumulated tool calls for session persistence (no responses).
+        self._tool_calls: list[dict[str, Any]] = []
+
+    # ── Public accessors ─────────────────────────────────────────────
+
+    def get_tool_calls(self) -> list[dict[str, Any]]:
+        """Return the list of tool invocations captured so far.
+
+        Each entry: ``{"tool": str, "args": dict}``
+        """
+        return list(self._tool_calls)
+
+    def clear_tool_calls(self):
+        """Reset the captured tool-call list."""
+        self._tool_calls.clear()
 
     # ── Tool lifecycle ────────────────────────────────────────────────
 
@@ -78,6 +96,9 @@ class ToolCallCapture(BaseCallbackHandler):
 
         self._current_tool = tool_name
         self._current_tool_args = args
+
+        # Record the tool call for session persistence (without response).
+        self._tool_calls.append({"tool": tool_name, "args": dict(args)})
 
         # Don't print anything yet -- wait for result to merge.
         return None
