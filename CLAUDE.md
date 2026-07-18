@@ -8,6 +8,7 @@
 - **查询某个函数的实现**：执行 `codegraph explore "read_file"` 即可查看 `read_file` 函数的实现代码。
 - **查跨文件调用链**：执行 `codegraph explore "Orchestrator.run"` 即可查看 `Orchestrator.run` 其调用链。
 注意，`codegraph`已经注册到系统里了，你可以安全的调用它。该程序并不在当前目录下，你没有必要去寻找它。但是系统里没有安装`grep`命令，调用会报错。
+- 当需要涉及github的认证的时候，使用`%GITHUB_TOKEN%`进行指代即可。
 
 ## Learned User Preferences
 
@@ -21,7 +22,6 @@
 - Agnet 工作流的设计模式：Coder Agent（实现）→ Reviewer Agent（审查）→ 反馈循环，每轮落盘持久化。
 - 当前每完成一次工作后，对当前工作进行简短总结，使用git工具进行提交。**不要使用git push**。
 - 具体的文件级工程记忆写入对应的文件头部注释。
-- **飞书集成偏好**：用户明确要求**不使用第三方开源项目**，倾向使用飞书官方提供的 MCP 服务器或飞书开放平台的原生能力。用户在 Issue #5 的讨论中拒绝了第三方开源 MCP 项目方案。
 
 ## Learned Workspace Facts
 
