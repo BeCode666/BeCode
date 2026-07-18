@@ -693,7 +693,7 @@ def get_available_mcp_tools() -> list[StructuredTool]:
     for server_name, config in servers.items():
         try:
             tools_info = asyncio.run(_discover_tools(config))
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning("Failed to discover tools from MCP server [%s]: %s",
                            server_name, exc)
             continue

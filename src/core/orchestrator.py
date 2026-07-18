@@ -386,7 +386,7 @@ class Orchestrator:
                     )
                     # Success — exit retry loop
                     break
-                except Exception as exc:
+                except BaseException as exc:
                     coder_last_exception = exc
                     category = classify_coder_error(exc)
                     logger.warning(
