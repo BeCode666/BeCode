@@ -22,6 +22,14 @@ in real-time through the AgentConsole UI.
 ║    因此其输出不会触发本 callback 的 on_llm_end     ║
 ║    从而不会误渲染为 agent 思考过程。安全审查        ║
 ║    结果由 bash_exec 工具直接包含在工具输出中。      ║
+║  - 并行工具调用修复 (unknown_tool 根因):          ║
+║    LangGraph ToolNode 会并发执行 LLM 一次返回的   ║
+║    多个 tool_calls。原实现用单变量 _current_tool  ║
+║    跟踪当前工具，导致后启动的工具会覆盖前者的状态， ║
+║    前者的 on_tool_end 读到错误名字，后者则读到     ║
+║    None → 回退为 "unknown_tool"。修复: 改用       ║
+║    _active_tools: dict[run_id → {tool, args}]     ║
+║    按 run_id 独立跟踪每个工具调用。               ║
 ╚══════════════════════════════════════════════════╝
 """
 
@@ -74,8 +82,13 @@ class ToolCallCapture(BaseCallbackHandler):
     def __init__(self, agent_name: str = "coder"):
         self.agent_name = agent_name
         self._console = get_console()
-        self._current_tool: Optional[str] = None
-        self._current_tool_args: Optional[dict] = None
+        # Map run_id → {"tool": str, "args": dict}.
+        # MUST be keyed by run_id (not a single _current_tool variable)
+        # because LangGraph's ToolNode executes multiple tool_calls in
+        # parallel: a single-state approach would let a later tool's
+        # on_tool_start overwrite the earlier tool's state before its
+        # on_tool_end fires, producing "unknown_tool" displays.
+        self._active_tools: dict[UUID, dict[str, Any]] = {}
         # Accumulated tool calls for session persistence (no responses).
         self._tool_calls: list[dict[str, Any]] = []
 
@@ -116,8 +129,8 @@ class ToolCallCapture(BaseCallbackHandler):
         elif input_str:
             args = {"input": input_str[:200]}
 
-        self._current_tool = tool_name
-        self._current_tool_args = args
+        # Key by run_id so parallel tool calls don't clobber each other.
+        self._active_tools[run_id] = {"tool": tool_name, "args": args}
 
         # Record the tool call for session persistence (without response).
         self._tool_calls.append({"tool": tool_name, "args": dict(args)})
@@ -140,14 +153,12 @@ class ToolCallCapture(BaseCallbackHandler):
         (args) and its result, eliminating the previous start/end split
         that caused duplicate output.
         """
-        tool_name = self._current_tool or "unknown_tool"
-        args = self._current_tool_args or {}
+        info = self._active_tools.pop(run_id, None)
+        tool_name = info["tool"] if info else "unknown_tool"
+        args = info["args"] if info else {}
         result_str = _extract_tool_output(output)
 
         self._console.tool_call(tool_name, args, result_str)
-
-        self._current_tool = None
-        self._current_tool_args = None
         return None
 
     def on_tool_error(
@@ -160,10 +171,9 @@ class ToolCallCapture(BaseCallbackHandler):
         **kwargs: Any,
     ) -> Any:
         """Called when a tool raises an error."""
-        tool_name = self._current_tool or "unknown_tool"
+        info = self._active_tools.pop(run_id, None)
+        tool_name = info["tool"] if info else "unknown_tool"
         self._console.error(f"工具 {tool_name} 出错: {error}")
-        self._current_tool = None
-        self._current_tool_args = None
         return None
 
     # ── LLM / Chain-of-thought ────────────────────────────────────────

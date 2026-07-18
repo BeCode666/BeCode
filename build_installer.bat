@@ -98,10 +98,10 @@ for /f "tokens=1-3 delims=." %%a in ("%OLD_VERSION%") do (
 )
 
 set /a V3+=1
-if !V3! gtr 9 (
+if !V3! gtr 20 (
     set V3=0
     set /a V2+=1
-    if !V2! gtr 9 (
+    if !V2! gtr 20 (
         set V2=0
         set /a V1+=1
         if !V1! gtr 9 (

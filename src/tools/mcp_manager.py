@@ -768,15 +768,20 @@ def format_mcp_context() -> str:
             continue
 
         for tool in tools_info:
-            t_name = tool.get("name", "unknown")
+            t_raw_name = tool.get("name", "unknown")
             t_desc = tool.get("description", "").strip()
             t_schema = tool.get("input_schema", {})
+            # Use the same sanitized name format that get_available_mcp_tools()
+            # registers the tool under.  This ensures the LLM sees the EXACT
+            # name it should use when calling the tool, preventing "unknown_tool"
+            # errors caused by name mismatch between the prompt and tool registry.
+            t_display_name = _sanitize_tool_name(f"mcp_{server_name}_{t_raw_name}")
             params_str = ", ".join(
                 f"{k}: {v.get('type', 'any')}"
                 for k, v in t_schema.get("properties", {}).items()
             ) if t_schema else "(无参数)"
             desc_line = f" — {t_desc[:120]}" if t_desc else ""
-            lines.append(f"   - **{t_name}**({params_str}){desc_line}")
+            lines.append(f"   - **{t_display_name}**({params_str}){desc_line}")
 
     return "\n".join(lines)
 

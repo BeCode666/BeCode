@@ -24,6 +24,8 @@ Three tools:
 ║    MAX_TOOL_OUTPUT_LENGTH(=40000) 字符，会被强制替换为提示消息              ║
 ║    「命令返回长度超过10ktoken，请检查后重试」。                             ║
 ║    _apply_output_limit() 为辅助函数，封装截断逻辑。                        ║
+║  - get_workspace_root() 函数: 公开获取工作区根路径，                        ║
+║    供 Coder Agent 系统提示词注入工作区绝对路径。                           ║
 ╚══════════════════════════════════════════════════╝
 """
 
@@ -88,6 +90,15 @@ def set_workspace_root(path: str | Path):
     """Set the allowed workspace root for file operations."""
     global _WORKSPACE_ROOT
     _WORKSPACE_ROOT = Path(path).resolve()
+
+
+def get_workspace_root() -> Path:
+    """Get the current workspace root absolute path.
+
+    Returns the path previously set via :func:`set_workspace_root`, or
+    falls back to ``Path.cwd()`` if none was set.
+    """
+    return _WORKSPACE_ROOT.resolve() if _WORKSPACE_ROOT else Path.cwd().resolve()
 
 
 def set_user_requirement(requirement: str):

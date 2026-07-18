@@ -69,20 +69,71 @@ class TestToolCallCapture:
         assert calls[0]["tool"] == "bash_exec"
 
     def test_on_tool_end_clears_state(self):
-        self.capture._current_tool = "bash_exec"
-        self.capture._current_tool_args = {"command": "echo hi"}
-        self.capture.on_tool_end(output="hi", run_id=uuid4())
-        assert self.capture._current_tool is None
-        assert self.capture._current_tool_args is None
+        """on_tool_end should pop the active tool entry for its run_id."""
+        rid = uuid4()
+        self.capture._active_tools[rid] = {
+            "tool": "bash_exec",
+            "args": {"command": "echo hi"},
+        }
+        self.capture.on_tool_end(output="hi", run_id=rid)
+        assert rid not in self.capture._active_tools
 
     def test_on_tool_error_clears_state(self):
-        self.capture._current_tool = "bash_exec"
+        """on_tool_error should pop the active tool entry for its run_id."""
+        rid = uuid4()
+        self.capture._active_tools[rid] = {
+            "tool": "bash_exec",
+            "args": {"command": "echo hi"},
+        }
         self.capture.on_tool_error(
             Exception("Command failed"),
-            run_id=uuid4(),
+            run_id=rid,
         )
-        assert self.capture._current_tool is None
-        assert self.capture._current_tool_args is None
+        assert rid not in self.capture._active_tools
+
+    def test_parallel_tool_calls_dont_clobber(self):
+        """Two concurrent tool runs must be tracked independently by run_id.
+
+        This is the regression test for the 'unknown_tool' bug: when the
+        LLM emits multiple tool_calls in one message, LangGraph's ToolNode
+        executes them concurrently and the callbacks are interleaved.
+        A single _current_tool variable would let the second on_tool_start
+        overwrite the first, so the first on_tool_end would see the wrong
+        tool (and the second would see None → 'unknown_tool').
+        """
+        rid_a = uuid4()
+        rid_b = uuid4()
+
+        # Tool A starts
+        self.capture.on_tool_start(
+            serialized={"name": "bash_exec"},
+            input_str="",
+            run_id=rid_a,
+            inputs={"command": "echo A"},
+        )
+        # Tool B starts (before A finishes) — must NOT overwrite A
+        self.capture.on_tool_start(
+            serialized={"name": "web_search"},
+            input_str="",
+            run_id=rid_b,
+            inputs={"query": "hello"},
+        )
+
+        assert self.capture._active_tools[rid_a]["tool"] == "bash_exec"
+        assert self.capture._active_tools[rid_b]["tool"] == "web_search"
+
+        # Tool A ends first — must retrieve A's info, not B's
+        self.capture.on_tool_end(output="A result", run_id=rid_a)
+        # Tool B ends after — must still find B's info
+        self.capture.on_tool_end(output="B result", run_id=rid_b)
+
+        # Both should be popped
+        assert rid_a not in self.capture._active_tools
+        assert rid_b not in self.capture._active_tools
+
+        # Both calls recorded in order
+        calls = self.capture.get_tool_calls()
+        assert [c["tool"] for c in calls] == ["bash_exec", "web_search"]
 
     def test_clear_tool_calls(self):
         serialized = {"name": "read_file"}

@@ -41,6 +41,10 @@
   的参数被 LangChain 静默丢弃。`_create_args_schema()` 将 MCP 工具的 `input_schema.
   properties` 转为 Pydantic model，确保参数正确传递。`_make_mcp_tool_fn()` 中还会
   在调用前过滤掉值为 `None` 的参数，避免 MCP 服务器拒绝 `null` 值。
+- **系统提示词含工作区路径**: `src/agents/coder_agent.py` 的 `_build_system_prompt()`
+  在 prompt 起始处注入 `Current workspace: {绝对路径}`，要求 Coder Agent
+  在工作区文件夹内开展所有工作。路径通过 `src/tools/tools.py` 的
+  `get_workspace_root()` 获取（优先级: `set_workspace_root()` 设置值 → cwd）。
 - **Session Memory Tool**: `src/tools/session_memory.py` 实现会话记忆工具（仅交互式对话有效）。
   - 存储位置: `~/.becode/memory/{8位session_id}.md`
   - 两种模式: `write`(写入/追加) 和 `read only`(读取)

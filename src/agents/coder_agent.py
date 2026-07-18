@@ -28,6 +28,10 @@ MCP Server Integration:
 ║  - MCP 工具在 Agent 构建时动态发现并注入。       ║
 ║  - list_mcp_servers 工具供 Agent 查询可用 MCP    ║
 ║    服务器及其工具列表。                          ║
+║  - 系统提示词包含工作区绝对路径:                  ║
+║    在 prompt 起始部分注入                       ║
+║    「Current workspace: {workspace_root}」       ║
+║    并要求所有工作在该文件夹内开展。               ║
 ╚══════════════════════════════════════════════════╝
 """
 
@@ -39,7 +43,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.callbacks import Callbacks
 
 from src.core.llm_client import build_chat_model
-from src.tools.tools import read_file, edit_file, bash_exec, load_context_files
+from src.tools.tools import read_file, edit_file, bash_exec, load_context_files, get_workspace_root
 from src.tools.web_search import web_search, web_fetch
 from src.tools.mcp_manager import (
     get_available_mcp_tools,
@@ -111,8 +115,14 @@ def _build_system_prompt(mcp_tools_str: str) -> str:
     else:
         tools_description = base_tools
 
+    workspace_root = get_workspace_root()
+
     prompt = f"""You are an expert coding assistant (Coder Agent) in BeCode. Your goal is to implement
 the user's requirements by reading, editing files and running commands.
+
+Current workspace: {workspace_root}
+All work must be conducted within this workspace folder. File paths in tools should be
+relative to this workspace root unless otherwise specified.
 
 You have access to these tools:
 {tools_description}
