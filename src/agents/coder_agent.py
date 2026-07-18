@@ -46,7 +46,11 @@ from src.tools.mcp_manager import (
     format_mcp_context,
     list_mcp_servers_tool,
 )
-from src.tools.session_memory import session_memory, load_session_memory
+from src.tools.session_memory import (
+    session_memory,
+    load_session_memory,
+    is_interactive_mode_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +91,25 @@ def _build_system_prompt(mcp_tools_str: str) -> str:
     """Build the complete system prompt including MCP context."""
     mcp_context = format_mcp_context()
 
-    tools_description = """- read_file: Read a file's content (with optional line offset/limit).
+    # ── Built-in tool descriptions ─────────────────────────────────────
+    base_tools = """- read_file: Read a file's content (with optional line offset/limit).
 - edit_file: Edit a file by exact string replacement (search-and-replace).
 - bash_exec: Run a bash command (safety-checked automatically).
 - web_search: Search the web for information (e.g., docs, libraries, solutions).
 - web_fetch: Fetch and extract text content from a web page URL.
-- list_mcp_servers: List all configured MCP servers and their available tools.
-- session_memory: 记录/回顾当前交互式对话中的重要项目知识和信息。支持两个模式: write(写入) 和 read only(只读)。当完成任务后有重要信息要记录时使用 write 模式；当对项目感到困惑时使用 read only 模式检查笔记内容。"""
+- list_mcp_servers: List all configured MCP servers and their available tools."""
+
+    session_tool = (
+        "\n- session_memory: 记录/回顾当前交互式对话中的重要项目知识和信息。"
+        "支持两个模式: write(写入) 和 read only(只读)。"
+        "当完成任务后有重要信息要记录时使用 write 模式；"
+        "当对项目感到困惑时使用 read only 模式检查笔记内容。"
+    )
+
+    if is_interactive_mode_enabled():
+        tools_description = base_tools + session_tool
+    else:
+        tools_description = base_tools
 
     prompt = f"""You are an expert coding assistant (Coder Agent) in BeCode. Your goal is to implement
 the user's requirements by reading, editing files and running commands.
@@ -132,7 +148,11 @@ def build_coder_agent(model_name: Optional[str] = None):
 
     # ── Built-in tools ────────────────────────────────────────────────
     tools = [read_file, edit_file, bash_exec, web_search, web_fetch,
-             list_mcp_servers_tool, session_memory]
+             list_mcp_servers_tool]
+
+    # session_memory 仅交互式对话中可见
+    if is_interactive_mode_enabled():
+        tools.append(session_memory)
 
     # ── MCP tools ─────────────────────────────────────────────────────
     mcp_tools = get_available_mcp_tools()

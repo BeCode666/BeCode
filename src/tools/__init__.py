@@ -17,6 +17,8 @@ from src.tools.session_memory import (
     session_memory,
     set_session_memory_id,
     load_session_memory,
+    set_interactive_mode_enabled,
+    is_interactive_mode_enabled,
 )
 
 __all__ = [
@@ -27,4 +29,6 @@ __all__ = [
     "session_memory",
     "set_session_memory_id",
     "load_session_memory",
+    "set_interactive_mode_enabled",
+    "is_interactive_mode_enabled",
 ]

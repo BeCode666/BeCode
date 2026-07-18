@@ -16,9 +16,10 @@ interactive dialogue mode.
 ║  - _current_session_id 模块级变量，在            ║
 ║    interactive_mode() 入口处由                    ║
 ║    set_session_memory_id() 设置。                ║
-║  - 工具仅注册到 Coder Agent，且始终可用，        ║
-║    但仅在交互式对话中有实际效果（session ID      ║
-║    会被设置）。                                  ║
+║  - 工具仅注册到 Coder Agent，且仅在交互式对话    ║
+║    中可见（由 _interactive_mode_enabled 标志      ║
+║    控制，set_interactive_mode_enabled() 设置）。  ║
+║    非交互式模式下该工具从 Agent 工具列表中隐藏。 ║
 ║  - 记忆文件路径: ~/.becode/memory/{id}.md        ║
 ╚══════════════════════════════════════════════════╝
 """
@@ -38,6 +39,28 @@ logger = logging.getLogger(__name__)
 # session so the tool knows which session file to read / write.
 
 _current_session_id: str = ""
+
+# ── Interactive-mode flag ──────────────────────────────────────────
+# Controls whether the session_memory tool is exposed to the Coder
+# Agent.  In non-interactive (single-shot) mode the tool is hidden
+# from the agent's tool list to avoid confusion.
+
+_interactive_mode_enabled: bool = False
+
+
+def set_interactive_mode_enabled(enabled: bool) -> None:
+    """Set whether the session_memory tool is visible to the agent.
+
+    Should be called by ``interactive_mode()`` in ``main.py`` with
+    ``True``, and left at the default ``False`` for single-shot mode.
+    """
+    global _interactive_mode_enabled
+    _interactive_mode_enabled = enabled
+
+
+def is_interactive_mode_enabled() -> bool:
+    """Return whether interactive mode is active."""
+    return _interactive_mode_enabled
 
 
 def set_session_memory_id(session_id: str) -> None:

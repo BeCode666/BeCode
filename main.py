@@ -32,6 +32,7 @@ from src.tools.mcp_manager import get_mcp_config_path
 from src.tools.session_memory import (
     set_session_memory_id,
     load_session_memory,
+    set_interactive_mode_enabled,
 )
 from src.tools.tools import set_workspace_root
 
@@ -91,6 +92,9 @@ def interactive_mode(orchestrator: Orchestrator, model_name: Optional[str] = Non
     """
     from src.ui.console import get_console
     console = get_console()
+
+    # ── Signal that interactive mode is active ────────────────────
+    set_interactive_mode_enabled(True)
 
     # Register SIGINT handler
     global _ctrl_c_pressed
